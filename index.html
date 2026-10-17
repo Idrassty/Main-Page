@@ -669,7 +669,7 @@ $('callVideo').onclick = () => startCall(true);
 
 /* ---------- push notifications (sent through your free Cloudflare Worker) ---------- */
 const VAPID_KEY  = 'BHdrs4QBX-Cwgw0rRM-xd3ks6-ZmM-mIlThTu1QbOgFuy1pkoLGxkqk6u-3jRgp4XPzYUuLfFTGYELgupAa5XLs';   // Firebase > Project settings > Cloud Messaging > Web Push certificates
-const WORKER_URL = 'chat-push.pokekotkot.workers.dev';     // e.g. https://chat-push.yourname.workers.dev
+const WORKER_URL = 'https://chat-push.pokekotkot.workers.dev';     // e.g. https://chat-push.yourname.workers.dev
 let pushToken = null;
 async function pingWorker(body) {
   if (WORKER_URL.startsWith('PASTE') || !me) return;
