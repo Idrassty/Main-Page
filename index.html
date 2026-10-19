@@ -682,8 +682,14 @@ async function enablePush(ask) {
   try {
     // 1. Check if running inside Capacitor Android/iOS native container
     if (window.Capacitor && window.Capacitor.isNativePlatform()) {
-      const { PushNotifications } = await import('https://cdn.jsdelivr.net/npm/@capacitor/push-notifications/+esm');
+      // Use the local Capacitor plugin bridge instead of fetching from JSDelivr
+      const PushNotifications = window.Capacitor.Plugins.PushNotifications;
       
+      if (!PushNotifications) {
+        if (ask) alert('PushNotifications plugin not found in native bridge.');
+        return;
+      }
+
       let permStatus = await PushNotifications.checkPermissions();
       if (permStatus.receive === 'prompt') {
         permStatus = await PushNotifications.requestPermissions();
@@ -717,7 +723,8 @@ async function enablePush(ask) {
       });
       
     } else {
-      // 2. Standard Web Browser Fallback
+      // 2. Standard Web Browser Fallback (only runs on actual desktop browsers)
+      const VAPID_KEY = 'BHdrs4QBX-Cwgw0rRM-xd3ks6-ZmM-mIlThTu1QbOgFuy1pkoLGxkqk6u-3jRgp4XPzYUuLfFTGYELgupAa5XLs';
       if (!('Notification' in window) || !('serviceWorker' in navigator) || !firebase.messaging) { if (ask) alert('This browser does not support notifications.'); return; }
       if (!(await Promise.resolve(firebase.messaging.isSupported()))) { if (ask) alert('This browser does not support notifications.'); return; }
       if (VAPID_KEY.startsWith('PASTE')) { if (ask) alert('Notifications are not set up yet: the web push key is missing in index.html.'); return; }
