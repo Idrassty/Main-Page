@@ -680,17 +680,56 @@ async function pingWorker(body) {
 }
 async function enablePush(ask) {
   try {
-    if (!('Notification' in window) || !('serviceWorker' in navigator) || !firebase.messaging) { if (ask) alert('This browser does not support notifications.'); return; }
-    if (!(await Promise.resolve(firebase.messaging.isSupported()))) { if (ask) alert('This browser does not support notifications.'); return; }
-    if (VAPID_KEY.startsWith('PASTE')) { if (ask) alert('Notifications are not set up yet: the web push key is missing in index.html.'); return; }
-    if (Notification.permission === 'denied') { if (ask) alert('Notifications are blocked. Allow them in your browser or site settings.'); return; }
-    if (Notification.permission !== 'granted') { if (!ask) return; if (await Notification.requestPermission() !== 'granted') return; }
-    const reg = await navigator.serviceWorker.register('firebase-messaging-sw.js');
-    await navigator.serviceWorker.ready;
-    pushToken = await firebase.messaging().getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
-    if (pushToken) {
-      await db.collection('users').doc(me.uid).collection('tokens').doc(pushToken).set({ ts: Date.now() });
-      if (ask) alert('Notifications are on for this device 🔔');
+    // 1. Check if running inside Capacitor Android/iOS native container
+    if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+      const { PushNotifications } = await import('https://cdn.jsdelivr.net/npm/@capacitor/push-notifications/+esm');
+      
+      let permStatus = await PushNotifications.checkPermissions();
+      if (permStatus.receive === 'prompt') {
+        permStatus = await PushNotifications.requestPermissions();
+      }
+
+      if (permStatus.receive !== 'granted') {
+        if (ask) alert('Push notification permission denied.');
+        return;
+      }
+
+      await PushNotifications.register();
+
+      PushNotifications.addListener('registration', async (token) => {
+        pushToken = token.value;
+        if (pushToken && me) {
+          await db.collection('users').doc(me.uid).collection('tokens').doc(pushToken).set({ ts: Date.now() });
+          if (ask) alert('Native push notifications are active for this device 🔔');
+        }
+      });
+
+      PushNotifications.addListener('registrationError', (error) => {
+        console.error('Push registration error: ', error);
+      });
+
+      PushNotifications.addListener('pushNotificationReceived', (notification) => {
+        console.log('Push received:', notification);
+      });
+
+      PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+        console.log('Push action performed:', action);
+      });
+      
+    } else {
+      // 2. Standard Web Browser Fallback
+      if (!('Notification' in window) || !('serviceWorker' in navigator) || !firebase.messaging) { if (ask) alert('This browser does not support notifications.'); return; }
+      if (!(await Promise.resolve(firebase.messaging.isSupported()))) { if (ask) alert('This browser does not support notifications.'); return; }
+      if (VAPID_KEY.startsWith('PASTE')) { if (ask) alert('Notifications are not set up yet: the web push key is missing in index.html.'); return; }
+      if (Notification.permission === 'denied') { if (ask) alert('Notifications are blocked. Allow them in your browser or site settings.'); return; }
+      if (Notification.permission !== 'granted') { if (!ask) return; if (await Notification.requestPermission() !== 'granted') return; }
+      const reg = await navigator.serviceWorker.register('firebase-messaging-sw.js');
+      await navigator.serviceWorker.ready;
+      pushToken = await firebase.messaging().getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+      if (pushToken) {
+        await db.collection('users').doc(me.uid).collection('tokens').doc(pushToken).set({ ts: Date.now() });
+        if (ask) alert('Notifications are on for this device 🔔');
+      }
     }
   } catch (e) { if (ask) alert('Could not turn on notifications: ' + e.message); }
 }
