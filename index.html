@@ -821,6 +821,86 @@ function watchCalls(list) {
     document.body.appendChild(s);
   })();
 })();
+    <!-- ... Rest of your existing website HTML elements ... -->
+
+    <script>
+      // Global variable to keep track of the current user's authenticated ID
+      let currentUid = null;
+
+      // Call this function right after your custom login logic successfully completes 
+      // and you receive the user's authenticated Firebase auth.uid string
+      function onUserLoggedIn(uid) {
+        currentUid = uid;
+        if (window.Capacitor) {
+          initializeNativeFcmPush();
+        }
+      }
+
+      async function initializeNativeFcmPush() {
+        if (!currentUid) {
+          console.warn("FCM cannot initialize: User UID is missing. Call onUserLoggedIn(uid) first.");
+          return;
+        }
+
+        // 1. Request native permission from the Android OS subsystem
+        let permStatus = await window.Capacitor.Plugins.PushNotifications.checkPermissions();
+        
+        if (permStatus.receive === 'prompt') {
+          permStatus = await window.Capacitor.Plugins.PushNotifications.requestPermissions();
+        }
+        
+        if (permStatus.receive === 'granted') {
+          // 2. Register the hardware wrapper container with Firebase Cloud Messaging
+          await window.Capacitor.Plugins.PushNotifications.register();
+        }
+
+        // 3. Intercept the generated FCM Device Token and save it to the correct Firestore path
+        window.Capacitor.Plugins.PushNotifications.addListener('registration', async (token) => {
+          console.log('Native FCM Token generated successfully: ' + token.value);
+          
+          try {
+            // Write the token to Firestore matching your rules layout: /users/{uid}/tokens/{token}
+            // Replace 'db' with your firestore instance if initialized globally, or use your standard web SDK initialization
+            await db.collection('users').doc(currentUid).collection('tokens').doc(token.value).set({
+              token: token.value,
+              createdAt: new Date(),
+              platform: 'android'
+            });
+            console.log('FCM token successfully registered to user database.');
+          } catch (error) {
+            console.error('Firestore token write rejected. Check rule permissions:', error);
+          }
+        });
+
+        // 4. Handle notification payloads in the foreground (while the user has the app open)
+        window.Capacitor.Plugins.PushNotifications.addListener('pushNotificationReceived', (notification) => {
+          // Check if this payload is an incoming call signaling packet matching your service worker schema
+          const isCall = notification.data && notification.data.type === 'call';
+          
+          if (isCall) {
+            // Trigger your UI signalling layouts or window view directly here!
+            console.log('Incoming call packet parsed: ' + notification.data.callId);
+          } else {
+            console.log('Standard foreground text alert received: ' + notification.body);
+          }
+        });
+
+        // 5. Handle action clicks when a user taps a background tray alert notification
+        window.Capacitor.Plugins.PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+          const data = action.notification.data;
+          console.log('User performed action: ' + action.actionId, data);
+          
+          // Match the tap handlers from your background service worker layout
+          if (action.actionId === 'answer' && data.fid && data.callId) {
+            // Execute your custom window method to open up WebRTC peer media blocks
+            console.log('Answering call from chat room: ' + data.fid);
+          }
+        });
+      }
+    </script>
+</body>
+</html>
+
 </script>
 </body>
 </html>
