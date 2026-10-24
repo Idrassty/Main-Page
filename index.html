@@ -305,16 +305,24 @@ const firebaseConfig = {
   messagingSenderId: "862303550078",
   appId: "1:862303550078:web:54a2f29a3cf5ab5d56f62f"
 };
+// Initialize your Firebase App configuration as you normally do
 firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth(), db = firebase.firestore();
-db.settings({ experimentalAutoDetectLongPolling: true, merge: true });
-const TS = firebase.firestore.FieldValue.serverTimestamp;
+const db = firebase.firestore();
 
-const $ = id => document.getElementById(id);
-const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const fakeMail = n => n.toLowerCase() + "@myspace-app.local";
-let me = null, myName = "", registering = false;
-let unsubDiary, unsubFriends, unsubMsgs, currentChat = null;
+// FIX: Only initialize standard browser messaging if the app is NOT running inside the APK container!
+let messaging = null;
+if (!window.Capacitor) {
+  try {
+    if (firebase.messaging && firebase.messaging.isSupported()) {
+      messaging = firebase.messaging();
+      console.log("Standard browser Firebase Messaging initialized successfully.");
+    }
+  } catch (e) {
+    console.warn("Browser messaging setup skipped or unsupported in this context.");
+  }
+} else {
+  console.log("Running as an installable app: Browser-based firebase.messaging instance deactivated to prevent WebView crashes.");
+}
 
 /* ---------- auth (username only) ---------- */
 $('authSwitch').onclick = () => {
