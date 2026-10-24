@@ -1,20 +1,26 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<script src="capacitor.js"></script>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Study Study</title>
-<link rel="icon" type="image/svg+xml" href="icon.svg">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#2c3e50">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Study Study</title>
+    
+    <!-- Forces the embedded WebView to expose the native hardware container objects instantly -->
+    <script src="capacitor.js"></script>
+
+    <link rel="icon" type="image/svg+xml" href="icon.svg">
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="theme-color" content="#2c3e50">
+</head>
+<body> <!-- Make sure your body tag opens right after the head closes -->
 <style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif}
 [hidden]{display:none!important}
 html,body{height:100%}
 body{background:#eef2f3;color:#333}
+
 
 /* ---------- COVER (disguise screen) ---------- */
 #cover{min-height:100%;display:flex;align-items:center;justify-content:center;padding:20px;background:#dfe6e9}
