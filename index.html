@@ -696,53 +696,58 @@ async function pingWorker(body) {
       }
 
       // 2. OVERRIDE TRADITIONAL ROUTINES: Re-defining enablePush to natively handle both App and Browser
-      async function enablePush(ask = true) {
-        try {
-          // A. If running inside the native APK, route notifications through the Android OS system
-          if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PushNotifications) {
-            console.log("Running inside APK container—routing notifications through the Android OS system.");
-            
-            const PushNotifications = window.Capacitor.Plugins.PushNotifications;
-            let permStatus = await PushNotifications.checkPermissions();
-            
-            if (permStatus.receive === 'prompt') {
-              permStatus = await PushNotifications.requestPermissions();
-            }
-            
-            if (permStatus.receive === 'granted') {
-              await PushNotifications.register();
-              
-              // Handle generated FCM token registration mapping
-              PushNotifications.addListener('registration', async (token) => {
-                let pushToken = token.value;
-                // If me exists globally, use me.uid, otherwise fallback to currentUid tracking
-                let targetUid = (typeof me !== 'undefined' && me) ? me.uid : currentUid;
-                
-                if (pushToken && targetUid) {
-                  await db.collection('users').doc(targetUid).collection('tokens').doc(pushToken).set({ ts: Date.now(), platform: 'android' });
-                  if (ask) alert('Notifications are on for this mobile device 🔔');
-                } else {
-                  console.warn("FCM Token generated but cannot save to Firestore yet: User UID is not available.");
-                }
-              });
-
-              // Handle foreground messaging packets safely while the app is actively running open
-              PushNotifications.addListener('pushNotificationReceived', (notification) => {
-                console.log('Foreground notification packet parsed: ', notification);
-              });
-
-              // Handle notification tray click mechanics matching your service worker layouts
-              PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
-                const data = action.notification.data;
-                console.log('User performed native notification action: ' + action.actionId, data);
-              });
-              
-              return; // Exit early out of the entire routine so browser lines below NEVER run inside the APK!
-            } else {
-              if (ask) alert('Notifications are blocked. Please enable them in your phone app settings.');
-              return;
-            }
+async function enablePush(ask) {
+  try {
+    // 1. Android Native App Integration (Runs inside the Capacitor APK wrapper)
+    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PushNotifications) {
+      console.log("Running inside APK container—routing notifications through the Android OS system.");
+      
+      const PushNotifications = window.Capacitor.Plugins.PushNotifications;
+      let permStatus = await PushNotifications.checkPermissions();
+      
+      if (permStatus.receive === 'prompt') {
+        permStatus = await PushNotifications.requestPermissions();
+      }
+      
+      if (permStatus.receive === 'granted') {
+        await PushNotifications.register();
+        
+        PushNotifications.addListener('registration', async (token) => {
+          pushToken = token.value;
+          if (pushToken && me && me.uid) {
+            await db.collection('users').doc(me.uid).collection('tokens').doc(pushToken).set({ ts: Date.now() });
+            if (ask) alert('Notifications are on for this device 🔔');
           }
+        });
+        return;
+      } else {
+        if (ask) alert('Notifications are blocked. Allow them in your phone Android application settings.');
+        return;
+      }
+    }
+
+    // 2. Standard Web Browser Fallback (This will safely run ONLY on desktop browsers)
+    console.log("Running on a standard desktop/mobile web browser wrapper layer.");
+    const VAPID_KEY = 'BHdrs4QBX-Cwgw0rRM-xd3ks6-ZmM-mIlThTu1QbOgFuy1pkoLGxkqk6u-3jRgp4XPzYUuLfFTGYELgupAa5XLs';
+    
+    if (!('Notification' in window) || !('serviceWorker' in navigator) || !firebase.messaging) { return; }
+    if (!(await Promise.resolve(firebase.messaging.isSupported()))) { return; }
+    if (VAPID_KEY.startsWith('PASTE')) { if (ask) alert('Notifications are not set up yet: the web push key is missing.'); return; }
+    if (Notification.permission === 'denied') { if (ask) alert('Notifications are blocked in your browser settings.'); return; }
+    if (Notification.permission !== 'granted') { if (!ask) return; if (await Notification.requestPermission() !== 'granted') return; }
+    
+    const reg = await navigator.serviceWorker.register('firebase-messaging-sw.js');
+    await navigator.serviceWorker.ready;
+    pushToken = await firebase.messaging().getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+    if (pushToken && me && me.uid) {
+      await db.collection('users').doc(me.uid).collection('tokens').doc(pushToken).set({ ts: Date.now() });
+      if (ask) alert('Notifications are on for this device 🔔');
+    }
+  } catch (e) { 
+    console.error('Notification setup failed: ', e.message); 
+  }
+}
+
 
           // B. Standard Web Browser Fallback (This will now safely ONLY run if NOT inside the APK container)
           console.log("Running on a desktop/mobile web browser wrapper layer.");
