@@ -724,6 +724,33 @@ async function enablePush(ask) {
       });
       
     } else {
+      // 1. Android Native App Integration (Runs inside the Capacitor APK wrapper)
+      if (window.Capacitor && window.Capacitor.Plugins.PushNotifications) {
+        let permStatus = await window.Capacitor.Plugins.PushNotifications.checkPermissions();
+        
+        if (permStatus.receive === 'prompt') {
+          permStatus = await window.Capacitor.Plugins.PushNotifications.requestPermissions();
+        }
+        
+        if (permStatus.receive === 'granted') {
+          // Register the container with Android's notification manager framework
+          await window.Capacitor.Plugins.PushNotifications.register();
+          
+          // Intercept the token string and save it to your Firestore tokens layout
+          window.Capacitor.Plugins.PushNotifications.addListener('registration', async (token) => {
+            pushToken = token.value;
+            if (pushToken && me && me.uid) {
+              await db.collection('users').doc(me.uid).collection('tokens').doc(pushToken).set({ ts: Date.now() });
+              if (ask) alert('Notifications are on for this device 🔔');
+            }
+          });
+          return;
+        } else {
+          if (ask) alert('Notifications are blocked. Allow them in your phone Android application settings.');
+          return;
+        }
+      }
+
       // 2. Standard Web Browser Fallback (only runs on actual desktop browsers)
       const VAPID_KEY = 'BHdrs4QBX-Cwgw0rRM-xd3ks6-ZmM-mIlThTu1QbOgFuy1pkoLGxkqk6u-3jRgp4XPzYUuLfFTGYELgupAa5XLs';
       if (!('Notification' in window) || !('serviceWorker' in navigator) || !firebase.messaging) { if (ask) alert('This browser does not support notifications.'); return; }
@@ -740,8 +767,6 @@ async function enablePush(ask) {
       }
     }
   } catch (e) { if (ask) alert('Could not turn on notifications: ' + e.message); }
-}
-$('notifBtn').onclick = () => enablePush(true);
 
 // tapping a notification jumps into that chat; the Answer / Decline buttons handle calls
 const _qs = new URLSearchParams(location.search);
