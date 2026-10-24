@@ -681,90 +681,95 @@ async function pingWorker(body) {
   } catch (e) {}
 }
 
-async function enablePush(ask) {
-  try {
-    // 1. Android/iOS App Check: Are we running as a compiled Capacitor Native App?
-    if (window.Capacitor && window.Capacitor.isNativePlatform()) {
-      console.log('Running inside Native App container. Initializing Android push pipeline...');
-      const PushNotifications = window.Capacitor.Plugins.PushNotifications;
-      
-      if (!PushNotifications) {
-        if (ask) alert('PushNotifications plugin not found in native bridge.');
-        return;
-      }
+    <script>
+      // Global variable to keep track of the current user's authenticated ID
+      let currentUid = null;
 
-      let permStatus = await PushNotifications.checkPermissions();
-      if (permStatus.receive === 'prompt') {
-        permStatus = await PushNotifications.requestPermissions();
-      }
-
-      if (permStatus.receive !== 'granted') {
-        if (ask) alert('Push notification permission denied.');
-        return;
-      }
-
-      await PushNotifications.register();
-
-      PushNotifications.addListener('registration', async (token) => {
-        pushToken = token.value;
-        if (pushToken && me) {
-          await db.collection('users').doc(me.uid).collection('tokens').doc(pushToken).set({ ts: Date.now() });
-          if (ask) alert('Native push notifications are active for this device 🔔');
+      // 1. LINK TO YOUR LOGIN: Call this function right after your custom login logic successfully completes 
+      // and you receive the user's authenticated Firebase auth.uid string
+      function onUserLoggedIn(uid) {
+        currentUid = uid;
+        console.log("User logged in successfully, target UID saved:", uid);
+        if (window.Capacitor) {
+          enablePush(false); // Silently trigger the app notification permissions setup
         }
-      });
-
-      PushNotifications.addListener('registrationError', (error) => {
-        console.error('Push registration error: ', error);
-      });
-
-      PushNotifications.addListener('pushNotificationReceived', (notification) => {
-        console.log('Push received:', notification);
-      });
-
-      PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
-        console.log('Push action performed:', action);
-      });
-      return; // Exit function completely so browser steps below never execute inside the APK
-
-    } else {
-      // 2. Browser Fallback: Running on a standard web browser (Chrome, Safari, Firefox, etc.)
-      console.log('Running inside a web browser. Initializing Web Service Worker pipeline...');
-      
-      if (!('Notification' in window) || !('serviceWorker' in navigator) || !firebase.messaging) { 
-        if (ask) alert('This browser does not support notifications.'); 
-        return; 
-      }
-      if (!(await Promise.resolve(firebase.messaging.isSupported()))) { 
-        if (ask) alert('This browser does not support notifications.'); 
-        return; 
-      }
-      if (VAPID_KEY.startsWith('PASTE')) { 
-        if (ask) alert('Notifications are not set up yet: the web push key is missing in index.html.'); 
-        return; 
-      }
-      if (Notification.permission === 'denied') { 
-        if (ask) alert('Notifications are blocked. Allow them in your browser or site settings.'); 
-        return; 
-      }
-      if (Notification.permission !== 'granted') { 
-        if (!ask) return; 
-        if (await Notification.requestPermission() !== 'granted') return; 
       }
 
-      // This section is now safely skipped entirely inside the APK container
-      const reg = await navigator.serviceWorker.register('firebase-messaging-sw.js');
-      await navigator.serviceWorker.ready;
-      
-      pushToken = await firebase.messaging().getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
-      if (pushToken) {
-        await db.collection('users').doc(me.uid).collection('tokens').doc(pushToken).set({ ts: Date.now() });
-        if (ask) alert('Notifications are on for this web browser 🔔');
+      // 2. OVERRIDE TRADITIONAL ROUTINES: Re-defining enablePush to natively handle both App and Browser
+      async function enablePush(ask = true) {
+        try {
+          // A. If running inside the native APK, route notifications through the Android OS system
+          if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PushNotifications) {
+            console.log("Running inside APK container—routing notifications through the Android OS system.");
+            
+            const PushNotifications = window.Capacitor.Plugins.PushNotifications;
+            let permStatus = await PushNotifications.checkPermissions();
+            
+            if (permStatus.receive === 'prompt') {
+              permStatus = await PushNotifications.requestPermissions();
+            }
+            
+            if (permStatus.receive === 'granted') {
+              await PushNotifications.register();
+              
+              // Handle generated FCM token registration mapping
+              PushNotifications.addListener('registration', async (token) => {
+                let pushToken = token.value;
+                // If me exists globally, use me.uid, otherwise fallback to currentUid tracking
+                let targetUid = (typeof me !== 'undefined' && me) ? me.uid : currentUid;
+                
+                if (pushToken && targetUid) {
+                  await db.collection('users').doc(targetUid).collection('tokens').doc(pushToken).set({ ts: Date.now(), platform: 'android' });
+                  if (ask) alert('Notifications are on for this mobile device 🔔');
+                } else {
+                  console.warn("FCM Token generated but cannot save to Firestore yet: User UID is not available.");
+                }
+              });
+
+              // Handle foreground messaging packets safely while the app is actively running open
+              PushNotifications.addListener('pushNotificationReceived', (notification) => {
+                console.log('Foreground notification packet parsed: ', notification);
+              });
+
+              // Handle notification tray click mechanics matching your service worker layouts
+              PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+                const data = action.notification.data;
+                console.log('User performed native notification action: ' + action.actionId, data);
+              });
+              
+              return; // Exit early out of the entire routine so browser lines below NEVER run inside the APK!
+            } else {
+              if (ask) alert('Notifications are blocked. Please enable them in your phone app settings.');
+              return;
+            }
+          }
+
+          // B. Standard Web Browser Fallback (This will now safely ONLY run if NOT inside the APK container)
+          console.log("Running on a desktop/mobile web browser wrapper layer.");
+          const VAPID_KEY = 'BHdrs4QBX-Cwgw0rRM-xd3ks6-ZmM-mIlThTu1QbOgFuy1pkoLGxkqk6u-3jRgp4XPzYUuLfFTGYELgupAa5XLs';
+          
+          if (!('Notification' in window) || !('serviceWorker' in navigator) || !firebase.messaging) { if (ask) alert('This browser does not support notifications.'); return; }
+          if (!(await Promise.resolve(firebase.messaging.isSupported()))) { if (ask) alert('This browser does not support notifications.'); return; }
+          if (VAPID_KEY.startsWith('PASTE')) { if (ask) alert('Notifications are not set up yet: the web push key is missing in index.html.'); return; }
+          if (Notification.permission === 'denied') { if (ask) alert('Notifications are blocked. Allow them in your browser or site settings.'); return; }
+          if (Notification.permission !== 'granted') { if (!ask) return; if (await Notification.requestPermission() !== 'granted') return; }
+          
+          const reg = await navigator.serviceWorker.register('firebase-messaging-sw.js');
+          await navigator.serviceWorker.ready;
+          
+          let pushToken = await firebase.messaging().getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+          let targetUid = (typeof me !== 'undefined' && me) ? me.uid : currentUid;
+          
+          if (pushToken && targetUid) {
+            await db.collection('users').doc(targetUid).collection('tokens').doc(pushToken).set({ ts: Date.now() });
+            if (ask) alert('Notifications are on for this device 🔔');
+          }
+        } catch (e) {
+          if (ask) alert('Could not turn on notifications: ' + e.message);
+        }
       }
-    }
-  } catch (e) { 
-    if (ask) alert('Could not turn on notifications: ' + e.message); 
-  }
-}
+    </script>
+
 
 
       // 2. Standard Web Browser Fallback (only runs on actual desktop browsers)
