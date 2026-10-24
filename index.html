@@ -354,21 +354,33 @@ $('authBtn').onclick = async () => {
 };
 $('logoutBtn').onclick = async () => { try { if (pushToken && me) await db.collection('users').doc(me.uid).collection('tokens').doc(pushToken).delete(); } catch (e) {} pushToken = null; auth.signOut(); };
 
-auth.onAuthStateChanged(user => {
-  me = user;
-  [unsubDiary, unsubFriends, unsubMsgs].forEach(f => f && f());
-  if (inCall) endCall(true);
-  Object.values(callWatch).forEach(f => f()); callWatch = {};
-  currentChat = null;
-  const on = !!user;
-  $('login').hidden = on;
-  $('diaryPage').style.display = on ? '' : 'none';
-  $('chatPage').style.display = on ? '' : 'none';
-  document.querySelectorAll('[data-tab],#logoutBtn,#notifBtn').forEach(b => b.hidden = !on);
-  if (!on) return;
-  myName = user.email.split('@')[0];
-  $('meName').textContent = myName;
-  startDiary(); startFriends(); enablePush(false);
+firebase.auth().onAuthStateChanged((user) => {
+  if (user) {
+    console.log("Firebase Auth detected valid user session:", user.uid);
+    me = user;
+    
+    // Clear out any white splash placeholders and render the application layout
+    const mainUiElement = document.getElementById('app') || document.getElementById('main');
+    if (mainUiElement) {
+      mainUiElement.style.display = 'block'; 
+    }
+    
+    // Natively hook our updated Capacitor notification pipeline
+    if (typeof onUserLoggedIn === 'function') {
+      onUserLoggedIn(user.uid);
+    }
+  } else {
+    console.log("No active user session detected. Rendering login panel elements...");
+    me = null;
+    
+    // Force your login screen or registration frame container to display
+    const loginUiElement = document.getElementById('login-page') || document.getElementById('auth-container');
+    if (loginUiElement) {
+      loginUiElement.style.display = 'block';
+    } else {
+      console.warn("Could not find a login container element ID to display. Check your HTML tags!");
+    }
+  }
 });
 
 /* ---------- diary ---------- */
